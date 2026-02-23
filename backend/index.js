@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
+import walletRoutes from "./routes/walletRoute.js";
 
 const app = express();
 const PORT = 3000;
@@ -10,16 +11,11 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get("/", (req, res) => {
-    res.send("you are in home directory now ")
-    console.log("You are in home directory")
+    res.send({ message: "you are in wallet directory now" })
 })
 
-app.post("/", (req, res) => {
-
-    const { name } = req.body;
-    res.json({ message: `Your name is ${name}` })
-    console.log("You are in post directory")
-})
+app.use("/api/wallets", walletRoutes);
+app.use("/api/faucetclaims", faucetClaimRoutes);
 
 app.listen(PORT, () => {
     console.log(`You are logged in to ${PORT}`)
