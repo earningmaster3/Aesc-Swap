@@ -74,8 +74,6 @@ export const generateWallets = async (req, res) => {
             console.log(wallet);
             results.created++;
 
-            //save wallet to file
-            fs.writeFileSync(`wallets/${wallet.address}.json`, JSON.stringify(wallet));
 
             //push wallet to array
 
