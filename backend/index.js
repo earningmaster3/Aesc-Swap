@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
 import walletRoutes from "./routes/walletRoute.js";
+import faucetClaimRoutes from "./routes/faucetClaimRoutes.js";
 
 const app = express();
 const PORT = 3000;

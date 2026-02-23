@@ -1,5 +1,5 @@
 import prisma from "../prisma/client.js";
-import ether
+import { ethers } from "ethers";
 //maunaly create wallet
 
 export const createWallet = async (req, res) => {
@@ -11,7 +11,6 @@ export const createWallet = async (req, res) => {
         const existWallet = await prisma.wallet.findUnique({
             where: {
                 address: address,
-                privateKey: privateKey
             }
         })
 
@@ -33,30 +32,98 @@ export const createWallet = async (req, res) => {
     }
 }
 
-// // automatically create wallet
+// automatically create wallet
 
-// export const generateWallets = async(req,res)=>{
-//  try{
-//     const count = parseInt(req.query.count || req.body.count || 5);
+export const generateWallets = async (req, res) => {
+    try {
+        const count = parseInt(req.query.count || req.body.count || 5);
 
-//     if(count>1000){
-//         return res.status(400).json({error:"Count should be less than 1000"})
-//     }
+        if (count > 1000) {
+            return res.status(400).json({ error: "Count should be less than 1000" })
+        }
 
-//     console.log(`generating ${count} wallets`);
+        console.log(`generating ${count} wallets`);
 
-//     const results = {created:0, skipped:0, wallets:[]};
+        const results = { created: 0, skipped: 0, wallets: [] };
 
-//     for (i=0, i<count, i++){
-//         //generate random wallets using ethers
+        for (let i = 0; i < count; i++) {
+            //generate random wallets using ethers
+            const randomWallet = ethers.Wallet.createRandom();
 
-        
-//     }
+            //check if wallet is already exists
+            const existWallet = await prisma.wallet.findUnique({
+                where: {
+                    address: randomWallet.address,
+                    privateKey: randomWallet.privateKey
+                }
+            })
+
+            if (existWallet) {
+                results.skipped++;
+                continue;
+            }
+
+            //SAVE wallets to database
+
+            const wallet = await prisma.wallet.create({
+                data: {
+                    address: randomWallet.address,
+                    privateKey: randomWallet.privateKey,
+                },
+            });
+            console.log(wallet);
+            results.created++;
 
 
-//  }
-//  catch(error){
-//     console.log(error);
-//     res.status(500).json({error:"Failed to create wallet"})
-//  }
-// }
+            //push wallet to array
+
+            results.wallets.push({
+                id: wallet.id,
+                address: wallet.address,
+                privateKey: wallet.privateKey,
+            })
+
+            //show progress
+            if ((i + 1) % 10 === 0) {
+                console.log(`  ✅ ${i + 1}/${count} wallets generated`);
+            }
+            //console when wallet is created
+
+            console.log(`🎉 Done! Created: ${results.created} | Skipped: ${results.skipped}`);
+            res.json({
+                message: `Successfully generated ${results.created} wallets`,
+                created: results.created,
+                skipped: results.skipped,
+                wallets: results.wallets,
+            });
+
+
+        }
+
+
+    }
+    catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Failed to create wallet" })
+    }
+}
+
+//show all wallets
+
+export const getAllWallets = async (req, res) => {
+    try {
+        const wallets = await prisma.wallet.findMany({
+            select: {
+                id: true,
+                address: true,
+                createdAt: true,
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        res.json({ total: wallets.length, wallets });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to fetch wallets' });
+    }
+};
