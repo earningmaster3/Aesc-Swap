@@ -13,7 +13,26 @@ datasource db {
 model Wallet {
   id         Int      @id @default(autoincrement())
   address    String   @unique
-  privateKey String @unique
+  privateKey String 
   createdAt  DateTime @default(now())
+
+  claims FaucetClaim[]
 }
+
+model FaucetClaim {
+  id        Int      @id @default(autoincrement())
+  walletId  Int
+  address   String
+  status    String   @default("pending")  // pending, success, failed, skipped
+  txHash    String?
+  amount    String?
+  error     String?
+  claimedAt DateTime?
+  createdAt DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@map("faucet_claims")
+}
+
 

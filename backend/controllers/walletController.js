@@ -38,8 +38,8 @@ export const generateWallets = async (req, res) => {
     try {
         const count = parseInt(req.query.count || req.body.count || 5);
 
-        if (count > 1000) {
-            return res.status(400).json({ error: "Count should be less than 1000" })
+        if (isNaN(count) || count < 1 || count > 1000) {
+            return res.status(400).json({ error: "Count must be between 1 and 1000" })
         }
 
         console.log(`generating ${count} wallets`);
@@ -51,10 +51,12 @@ export const generateWallets = async (req, res) => {
             const randomWallet = ethers.Wallet.createRandom();
 
             //check if wallet is already exists
-            const existWallet = await prisma.wallet.findUnique({
+            const existWallet = await prisma.wallet.findFirst({
                 where: {
-                    address: randomWallet.address,
-                    privateKey: randomWallet.privateKey
+                    OR: [
+                        { address: randomWallet.address },
+                        { privateKey: randomWallet.privateKey }
+                    ]
                 }
             })
 
@@ -63,20 +65,18 @@ export const generateWallets = async (req, res) => {
                 continue;
             }
 
-            //SAVE wallets to database
 
+            //SAVE wallets to database
             const wallet = await prisma.wallet.create({
                 data: {
                     address: randomWallet.address,
                     privateKey: randomWallet.privateKey,
                 },
             });
-            console.log(wallet);
+
             results.created++;
 
-
             //push wallet to array
-
             results.wallets.push({
                 id: wallet.id,
                 address: wallet.address,
@@ -87,24 +87,24 @@ export const generateWallets = async (req, res) => {
             if ((i + 1) % 10 === 0) {
                 console.log(`  ✅ ${i + 1}/${count} wallets generated`);
             }
-            //console when wallet is created
-
-            console.log(`🎉 Done! Created: ${results.created} | Skipped: ${results.skipped}`);
-            res.json({
-                message: `Successfully generated ${results.created} wallets`,
-                created: results.created,
-                skipped: results.skipped,
-                wallets: results.wallets,
-            });
-
-
         }
+
+        console.log(`🎉 Done! Created: ${results.created} | Skipped: ${results.skipped}`);
+        res.json({
+            message: `Successfully generated ${results.created} wallets`,
+            created: results.created,
+            skipped: results.skipped,
+            wallets: results.wallets,
+        });
 
 
     }
     catch (error) {
         console.log(error);
         res.status(500).json({ error: "Failed to create wallet" })
+        //skipped if error
+        results.skipped++;
+
     }
 }
 
