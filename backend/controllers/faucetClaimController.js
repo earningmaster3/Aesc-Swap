@@ -1,7 +1,8 @@
 import prisma from "../prisma/client.js";
 import axios from "axios";
+import { ethers } from "ethers";
 
-const FAUCET_URL = "https://testnet1faucet.aescnet.com/api/faucet/request"
+const FAUCET_URL = process.env.FAUCET_URL || "https://testnet1faucet.aescnet.com/api/faucet/request";
 const DELAY_MS = parseInt(process.env.DELAY_MS || "10000");
 
 // ─── Helper: sleep between requests ──────────────────
@@ -28,11 +29,10 @@ export const faucetClaim = async (walletId, address) => {
         const data = response.data;
         const txHash = data.txHash;
 
-        //save success to db
-
+        // save success to db
         const claim = await prisma.faucetClaim.create({
             data: {
-                walletId,
+                walletId: parseInt(walletId),
                 address,
                 txHash,
                 status: "success",
@@ -43,20 +43,97 @@ export const faucetClaim = async (walletId, address) => {
 
         console.log(`✅ Claimed faucet for wallet ${walletId} (${address}) | Tx: ${txHash}`);
 
-        return { status: 'success', address, txHash, claimId: claim.id }
+        return ({ status: 'success', address, txHash, claimId: claim.id })
 
     }
     catch (error) {
         console.log(error);
         // Save failure to DB
-        await prisma.faucetClaim.create({
-            data: {
-                walletId,
-                address,
-                status: 'failed',
-                error: error.message,
+        try {
+            await prisma.faucetClaim.create({
+                data: {
+                    walletId: parseInt(walletId),
+                    address,
+                    status: 'failed',
+                    error: error.message,
+                }
+            });
+        } catch (dbError) {
+            console.error("Failed to persist faucet claim error:", dbError);
+        }
+        return { status: 'failed', address, error: error.message };
+    }
+}
+
+//Generate 50 wallets and claim faucet for each
+
+export const generateAndClaim = async (req, res) => {
+    try {
+
+        const count = parseInt(req.body.count || 3);
+
+
+        console.log(`Generating ${count} wallets and claiming faucet for each`);
+
+        const results = { walletCreated: 0, claimSuccess: 0, claimFailed: 0, wallets: [] };
+
+        for (let i = 0; i < count; i++) {
+            //step-1 : generate random wallet
+            const randomWallet = ethers.Wallet.createRandom();
+
+
+
+            //step-2 : check if wallet is already exists
+            const existWallet = await prisma.wallet.findFirst({
+                where: {
+                    OR: [
+                        { address: randomWallet.address },
+                        { privateKey: randomWallet.privateKey }
+                    ]
+                }
+            })
+
+            if (existWallet) {
+                results.walletCreated++;
+                continue;
             }
-        });
-        res.status(500).json({ error: "Failed to claim faucet" })
+
+            //step-3 : save wallet to db
+            const wallet = await prisma.wallet.create({
+                data: {
+                    address: randomWallet.address,
+                    privateKey: randomWallet.privateKey,
+                },
+            });
+
+            results.walletCreated++;
+
+            //step-4 : claim faucet
+            const claimResult = await faucetClaim(wallet.id, wallet.address);
+
+            if (claimResult.status === 'success') {
+                results.claimSuccess++;
+            } else {
+                results.claimFailed++;
+            }
+
+            //step-5 : push wallet to array
+            results.wallets.push({
+                id: wallet.id,
+                address: wallet.address,
+                privateKey: wallet.privateKey,
+            })
+
+            //step-6 : show progress
+            if ((i + 1) % 10 === 0) {
+                console.log(`  ✅ ${i + 1}/${count} wallets generated`);
+            }
+
+        }
+
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to generate and claim faucet" });
     }
 }
