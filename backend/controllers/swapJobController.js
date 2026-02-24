@@ -4,7 +4,8 @@ import { ethers } from "ethers";
 const AESC_URL = process.env.AESC_URL || "https://testnetrpc1.aescnet.com";
 const AESC_CHAIN_ID = parseInt(process.env.AESC_CHAIN_ID || "71602");
 const DELAY_MS = parseInt(process.env.DELAY_MS || "10000");
-const SWAP_AMOUNT = process.env.SWAP_AMOUNT || "0.1";
+const MIN_SWAP = process.env.MIN_SWAP || "0.01";
+const MAX_SWAP = process.env.MAX_SWAP || "0.2";
 
 //waex contract address
 const WAEX_ADDRESS = process.env.WAEX_ADDRESS || "0x05BE4146EAc85E380fB71ec6A4b97bA325cd53EE";
@@ -21,6 +22,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Core wrap function — AEX → WAEX for single wallet
 export const swapJob = async (walletId, address) => {
+    const randomAmount = (Math.random() * (parseFloat(MAX_SWAP) - parseFloat(MIN_SWAP)) + parseFloat(MIN_SWAP)).toFixed(4);
     try {
         console.log(`🔄 Wrapping AEX -> WAEX for wallet ${walletId} (${address})`);
 
@@ -37,15 +39,18 @@ export const swapJob = async (walletId, address) => {
         const walletData = await prisma.wallet.findUnique({
             where: { id: walletId }
         });
-
+        if (!walletData?.privateKey) {
+            throw new Error(`Wallet ${walletId} not found or missing privateKey`);
+        }
         const signer = new ethers.Wallet(walletData.privateKey, provider);
+
 
         //waex contract instance
         const waexContract = new ethers.Contract(WAEX_ADDRESS, WAEX_ABI, signer);
 
         //the amount of AEX to swap
 
-        const amountIn = ethers.parseUnits(SWAP_AMOUNT.toString(), 18);
+        const amountIn = ethers.parseUnits(randomAmount.toString(), 18);
         const amountOut = ethers.formatUnits(amountIn, 18);
 
         //get AEX wallet balance
@@ -56,7 +61,7 @@ export const swapJob = async (walletId, address) => {
 
         if (balance < amountIn) {
             throw new Error(
-                `Insufficient AEX. Has: ${ethers.formatUnits(balance, 18)} | Needs: ${SWAP_AMOUNT}`
+                `Insufficient AEX. Has: ${ethers.formatUnits(balance, 18)} | Needs: ${randomAmount}`
             );
         }
 
@@ -72,7 +77,7 @@ export const swapJob = async (walletId, address) => {
                 address,
                 tokenIn: 'AEX',
                 tokenOut: WAEX_ADDRESS,
-                amountIn: SWAP_AMOUNT,
+                amountIn: randomAmount,
                 amountOut,
                 status: 'success',
                 txHash: wrapTx.hash,
@@ -93,7 +98,7 @@ export const swapJob = async (walletId, address) => {
                     address,
                     tokenIn: "AEX",
                     tokenOut: WAEX_ADDRESS,
-                    amountIn: SWAP_AMOUNT,
+                    amountIn: randomAmount,
                     status: "failed",
                     error: error.message,
                     attempt: 1,
@@ -126,39 +131,105 @@ export const runSwapSingle = async (req, res) => {
 //swap job for all wallets
 export const runSwapForAll = async (req, res) => {
     try {
-        const wallets = await prisma.wallet.findMany({
+        // ✅ Only wallets that claimed faucet successfully AND not yet swapped
+        const faucetClaims = await prisma.faucetClaim.findMany({
             where: {
-                swapJobs: { none: { status: "success" } }
+                status: "success",
+                wallet: {
+                    swapJobs: { none: { status: "success" } }
+                }
             },
-            select: { id: true, address: true }
+            select: {
+                walletId: true,
+                address: true,
+            }
         });
 
-        if (wallets.length === 0) {
-            return res.status(200).json({ message: "All wallets already wrapped AEX → WAEX", total: 0 });
+        if (faucetClaims.length === 0) {
+            return res.status(200).json({
+                message: "No eligible wallets found. Either no faucet claims or all already swapped.",
+                total: 0
+            });
         }
 
-        console.log(`\n🚀 Starting AEX → WAEX wrap for ${wallets.length} wallets...\n`);
+        console.log(`\n🚀 Starting AEX → WAEX wrap for ${faucetClaims.length} wallets...\n`);
 
-        const results = { success: 0, failed: 0, total: wallets.length };
+        const results = { success: 0, failed: 0, total: faucetClaims.length };
 
-        for (let i = 0; i < wallets.length; i++) {
-            const w = wallets[i];
-            const result = await swapJob(w.id, w.address);
+        for (let i = 0; i < faucetClaims.length; i++) {
+            const w = faucetClaims[i];
+            const result = await swapJob(w.walletId, w.address);
 
-            if (result.status === "success") results.success++;
+            if (result?.status === "success") results.success++;
             else results.failed++;
 
-            console.log(`  📊 Progress: ${i + 1}/${wallets.length}`);
+            console.log(`  📊 Progress: ${i + 1}/${faucetClaims.length}`);
 
-            if (i < wallets.length - 1) {
+            if (i < faucetClaims.length - 1) {
                 console.log(`  ⏳ Waiting ${DELAY_MS}ms...\n`);
                 await sleep(DELAY_MS);
             }
         }
 
         console.log(`\n🎉 Done! ✅ ${results.success} | ❌ ${results.failed}\n`);
+
         res.status(200).json({
             message: "AEX → WAEX wrap complete",
+            total: results.total,
+            success: results.success,
+            failed: results.failed,
+        });
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Run swap job for all wallets even if already swapped
+export const runSwapLeft = async (req, res) => {
+    try {
+        // ✅ All wallets that claimed faucet successfully (regardless of previous swap status)
+        const faucetClaims = await prisma.faucetClaim.findMany({
+            where: {
+                status: "success",
+            },
+            select: {
+                walletId: true,
+                address: true,
+            }
+        });
+
+        if (faucetClaims.length === 0) {
+            return res.status(200).json({
+                message: "No eligible wallets found with successful faucet claims.",
+                total: 0
+            });
+        }
+
+        console.log(`\n🚀 Starting AEX → WAEX re-wrap for ${faucetClaims.length} wallets...\n`);
+
+        const results = { success: 0, failed: 0, total: faucetClaims.length };
+
+        for (let i = 0; i < faucetClaims.length; i++) {
+            const w = faucetClaims[i];
+            const result = await swapJob(w.walletId, w.address);
+
+            if (result?.status === "success") results.success++;
+            else results.failed++;
+
+            console.log(`  📊 Progress: ${i + 1}/${faucetClaims.length}`);
+
+            if (i < faucetClaims.length - 1) {
+                console.log(`  ⏳ Waiting ${DELAY_MS}ms...\n`);
+                await sleep(DELAY_MS);
+            }
+        }
+
+        console.log(`\n🎉 Done! ✅ ${results.success} | ❌ ${results.failed}\n`);
+
+        res.status(200).json({
+            message: "AEX → WAEX re-wrap complete",
             total: results.total,
             success: results.success,
             failed: results.failed,
