@@ -3,6 +3,7 @@ import cors from "cors";
 import bodyParser from "body-parser";
 import walletRoutes from "./routes/walletRoute.js";
 import faucetClaimRoutes from "./routes/faucetClaimRoutes.js";
+import swapJobRoutes from "./routes/swapJobRoutes.js";
 
 const app = express();
 const PORT = 3000;
@@ -17,6 +18,7 @@ app.get("/", (req, res) => {
 
 app.use("/api/wallets", walletRoutes);
 app.use("/api/faucetclaims", faucetClaimRoutes);
+app.use("/api/swapjobs", swapJobRoutes);
 
 app.listen(PORT, () => {
     console.log(`You are logged in to ${PORT}`)
