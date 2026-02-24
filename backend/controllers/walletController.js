@@ -14,7 +14,10 @@ export const createWallet = async (req, res) => {
             }
         })
 
+        console.log("wallet already exists", existWallet)
+
         if (existWallet) {
+
             return res.status(400).json({ error: "Wallet or private key already exists" });
         }
 

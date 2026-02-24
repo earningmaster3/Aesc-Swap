@@ -17,6 +17,7 @@ model Wallet {
   createdAt  DateTime @default(now())
 
   claims FaucetClaim[]
+  swapJobs SwapJob[]
 }
 
 model FaucetClaim {
@@ -33,6 +34,29 @@ model FaucetClaim {
   wallet Wallet @relation(fields: [walletId], references: [id])
 
   @@map("faucet_claims")
+}
+
+model SwapJob {
+  id         Int      @id @default(autoincrement())
+  walletId   Int
+  address    String
+
+  tokenIn    String
+  tokenOut   String
+  amountIn   String?
+  amountOut  String?
+
+  status     String   @default("pending")  // pending, success, failed, skipped
+  txHash     String?
+  error      String?
+  attempt    Int? @default(0)
+
+  swappedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  wallet Wallet @relation(fields: [walletId], references: [id])
+
+  @@map("swap_jobs")
 }
 
 

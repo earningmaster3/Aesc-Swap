@@ -72,6 +72,10 @@ export const generateAndClaim = async (req, res) => {
 
         const count = parseInt(req.body.count || 3);
 
+        if (isNaN(count) || count < 1 || count > 100) {
+            return res.status(400).json({ error: "Count must be between 1 and 100" });
+        }
+
 
         console.log(`Generating ${count} wallets and claiming faucet for each`);
 
@@ -80,8 +84,6 @@ export const generateAndClaim = async (req, res) => {
         for (let i = 0; i < count; i++) {
             //step-1 : generate random wallet
             const randomWallet = ethers.Wallet.createRandom();
-
-
 
             //step-2 : check if wallet is already exists
             const existWallet = await prisma.wallet.findFirst({
@@ -114,6 +116,10 @@ export const generateAndClaim = async (req, res) => {
             if (claimResult.status === 'success') {
                 results.claimSuccess++;
             } else {
+                if (claimResult.status === 'failed') {
+                    return res.status(502).json(claimResult);
+                }
+                res.json(claimResult);
                 results.claimFailed++;
             }
 
@@ -128,12 +134,15 @@ export const generateAndClaim = async (req, res) => {
             if ((i + 1) % 10 === 0) {
                 console.log(`  ✅ ${i + 1}/${count} wallets generated`);
             }
-
+            // Delay between claims to avoid rate limiting
+            if (i < count - 1) {
+                await sleep(DELAY_MS);
+            }
         }
 
 
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: "Failed to generate and claim faucet" });
+        console.error("Faucet claim route error:", error);
+        res.status(500).json({ error: "Internal server error" });
     }
 }
