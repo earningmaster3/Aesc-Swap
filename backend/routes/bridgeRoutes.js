@@ -1,8 +1,8 @@
 import express from "express";
-import { bridgeJob } from "../controllers/bridgeController.js";
+import { runBridgeSingle } from "../controllers/bridgeController.js";
 
 const router = express.Router();
 
-router.post("/", bridgeJob);
+router.post("/", runBridgeSingle);
 
 export default router;
