@@ -1,6 +1,6 @@
 import prisma from "../prisma/client.js";
 import { ethers } from "ethers";
-//maunaly create wallet
+
 
 export const createWallet = async (req, res) => {
 

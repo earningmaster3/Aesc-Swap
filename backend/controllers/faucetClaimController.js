@@ -2,46 +2,10 @@ import prisma from "../prisma/client.js";
 import axios from "axios";
 import { ethers } from "ethers";
 import { HttpsProxyAgent } from "https-proxy-agent";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import path from "path";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 
 
 const FAUCET_URL = process.env.FAUCET_URL || "https://testnet1faucet.aescnet.com/api/faucet/request";
 const DELAY_MS = parseInt(process.env.DELAY_MS || "10000");
-
-//Load proxies from proxy.txt
-
-const loadProxies = () => {
-    try {
-
-        const proxyPath = path.join(__dirname, "../../proxy.txt");
-        console.log(`📂 Looking for proxy.txt at: ${proxyPath}`);
-        console.log(`📂 __dirname is: ${__dirname}`);
-        const proxies = fs.readFileSync(proxyPath, "utf8").split("\n").map(p => p.trim()).filter(Boolean);
-        console.log(`✅ Loaded ${proxies.length} proxies`);
-        return proxies;
-
-    } catch (error) {
-        console.log("⚠️ Failed to load proxies");
-        console.error(error);
-        return [];
-    }
-}
-
-const PROXY_LIST = loadProxies();
-
-//Get random proxies
-const getRandomProxy = () => {
-    if (PROXY_LIST.length === 0) return null;
-    const proxy = PROXY_LIST[Math.floor(Math.random() * PROXY_LIST.length)]
-    console.log(` 🌐 Using proxy: ${proxy}`);
-    return proxy;
-}
 
 
 // ─── Helper: sleep between requests ──────────────────
@@ -52,11 +16,12 @@ export const faucetClaim = async (walletId, address) => {
     const maxProxyAttempts = 5; // Try up to 5 different proxies
     let lastError = null;
 
+    const proxy = "http://7253ea78ce8d8ebc90c5__cr.in:7fd6ee2ed6cd8a06@gw.dataimpulse.com:823";
+
     for (let attempt = 1; attempt <= maxProxyAttempts; attempt++) {
         try {
             console.log(`Claiming faucet for wallet ${walletId} (${address}) - Proxy Attempt ${attempt}/${maxProxyAttempts}`);
 
-            const proxy = getRandomProxy();
             const axiosConfig = {
                 headers: {
                     "Content-Type": "application/json",
