@@ -48,7 +48,7 @@ app.get("/test-proxy", async (req, res) => {
 app.use("/api/wallets", walletRoutes);
 app.use("/api/faucetclaims", faucetClaimRoutes);
 app.use("/api/swapjobs", swapJobRoutes);
-app.use("api/bridges", bridgeRoutes);
+app.use("/api/bridges", bridgeRoutes);
 
 app.listen(PORT, () => {
     console.log(`You are logged in to ${PORT}`)

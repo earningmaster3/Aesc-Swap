@@ -43,12 +43,12 @@ export const bridgeJob = async (walletId, address, privateKey) => {
     try {
         //core bridge function for a single wallet
 
-        console.log(`🌉 Bridging for wallet ${walletId} (${walletAddress})`)
+        console.log(`🌉 Bridging for wallet ${walletId} (${address})`)
 
         //connect to aesc chain
 
-        const provider = new ethers.JsonRpcApiProvider(AESC_RPC_URL, {
-            chainId: AESC_CHAIN_ID,
+        const provider = new ethers.JsonRpcProvider(AESC_RPC_URL, {
+            chainId: parseInt(AESC_CHAIN_ID),
             name: "aesc-testnet"
         })
 
@@ -58,7 +58,7 @@ export const bridgeJob = async (walletId, address, privateKey) => {
 
         const amount = ethers.parseUnits(BRIDGE_AMOUNT, 18);
 
-        const balance = await tokenContract.balanceOf(walletAddress)
+        const balance = await tokenContract.balanceOf(address)
         console.log(`💰 Balance: ${ethers.formatUnits(balance, 18)} WAEX`)
 
         //step-1 check balance
@@ -68,7 +68,7 @@ export const bridgeJob = async (walletId, address, privateKey) => {
         }
 
         //step-2 approve bridge 
-        const allowance = await tokenContract.allowance(walletAddress, BRIDGE_CONTRACT);
+        const allowance = await tokenContract.allowance(address, BRIDGE_ADDRESS);
         if (allowance < amount) {
             console.log(`  🔓 Approving bridge for wallet ${walletId}...`);
             const approveTx = await tokenContract.approve(BRIDGE_ADDRESS, ethers.MaxUint256);
@@ -81,7 +81,7 @@ export const bridgeJob = async (walletId, address, privateKey) => {
         console.log(`  📊 Fee: ${ethers.formatUnits(fee, 18)} WAEX`)
 
         //step-3 bridge
-        const bridgeTx = await bridgeContract.bridge(DEST_ADDRESS, amount, DEST_CHAIN_ID, walletAddress, { value: fee });
+        const bridgeTx = await bridgeContract.bridge(DEST_ADDRESS, amount, DEST_CHAIN_ID, address, { value: fee });
         await bridgeTx.wait();
         console.log(`  ✅ Bridged | TX: ${bridgeTx.hash}`)
 
@@ -89,7 +89,7 @@ export const bridgeJob = async (walletId, address, privateKey) => {
         const job = await prisma.bridgeJob.create({
             data: {
                 walletId: parseInt(walletId),
-                address: walletAddress,
+                address: address,
                 tokenIn: 'WAEX',
                 tokenOut: DEST_ADDRESS,
                 amountIn: BRIDGE_AMOUNT,
@@ -106,7 +106,8 @@ export const bridgeJob = async (walletId, address, privateKey) => {
     } catch (error) {
         console.log(error)
         const errorMsg = error.message;
-        console.error(`❌ Bridge failed for wallet ${walletId} (${walletAddress}): ${errorMsg}`);
+        console.error(`❌ Bridge failed for wallet ${walletId} (${address}): ${errorMsg}`);
+        throw error;
     }
 }
 
