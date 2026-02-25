@@ -13,50 +13,69 @@ datasource db {
 model Wallet {
   id         Int      @id @default(autoincrement())
   address    String   @unique
-  privateKey String 
+  privateKey String
   createdAt  DateTime @default(now())
 
-  claims FaucetClaim[]
-  swapJobs SwapJob[]
+  claims    FaucetClaim[]
+  swapJobs  SwapJob[]
+  BridgeJob BridgeJob[]
 }
 
 model FaucetClaim {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   walletId  Int
   address   String
-  status    String   @default("pending")  // pending, success, failed, skipped
+  status    String    @default("pending") // pending, success, failed, skipped
   txHash    String?
   amount    String?
   error     String?
   claimedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
-  wallet Wallet @relation(fields: [walletId], references: [id],onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   @@map("faucet_claims")
 }
 
 model SwapJob {
-  id         Int      @id @default(autoincrement())
-  walletId   Int
-  address    String
+  id       Int    @id @default(autoincrement())
+  walletId Int
+  address  String
 
-  tokenIn    String
-  tokenOut   String
-  amountIn   String?
-  amountOut  String?
+  tokenIn   String
+  tokenOut  String
+  amountIn  String?
+  amountOut String?
 
-  status     String   @default("pending")  // pending, success, failed, skipped
-  txHash     String?
-  error      String?
-  attempt    Int? @default(0)
+  status  String  @default("pending") // pending, success, failed, skipped
+  txHash  String?
+  error   String?
+  attempt Int?    @default(0)
 
-  swappedAt  DateTime?
-  createdAt  DateTime @default(now())
+  swappedAt DateTime?
+  createdAt DateTime  @default(now())
 
-  wallet Wallet @relation(fields: [walletId], references: [id],onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
   @@map("swap_jobs")
 }
 
+model BridgeJob {
+  id            Int       @id @default(autoincrement())
+  walletId      Int
+  walletAddress String
+  fromChainId   Int
+  toChainId     Int
+  tokenAddress  String
+  amount        String
+  txHash        String?
+  status        String    @default("pending")
+  error         String?
+  attempts      Int       @default(0)
+  bridgedAt     DateTime?
+  createdAt     DateTime  @default(now())
 
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@map("bridge_jobs")
+}

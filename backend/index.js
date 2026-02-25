@@ -7,13 +7,6 @@ import swapJobRoutes from "./routes/swapJobRoutes.js";
 
 import { HttpsProxyAgent } from "https-proxy-agent";
 import axios from "axios";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const proxyPath = path.join(__dirname, "../proxy.txt");
 
 const app = express();
 const PORT = 3000;
@@ -30,17 +23,11 @@ app.get("/", (req, res) => {
 
 app.get("/test-proxy", async (req, res) => {
     try {
-        const data = fs.readFileSync(proxyPath, "utf8");
-        const proxies = data.split("\n").map(p => p.trim()).filter(p => p);
 
-        if (proxies.length === 0) {
-            return res.status(500).json({ error: "No proxies found in proxy.txt" });
-        }
-
-        const randomProxy = proxies[Math.floor(Math.random() * proxies.length)];
+        const randomProxy = "http://7253ea78ce8d8ebc90c5__cr.in:7fd6ee2ed6cd8a06@gw.dataimpulse.com:823";
         const agent = new HttpsProxyAgent(randomProxy);
 
-        const response = await axios.get("https://ipinfo.io/json", {
+        const response = await axios.get("https://api.ipify.org/", {
             httpAgent: agent,
             httpsAgent: agent,
             timeout: 10000,
@@ -49,7 +36,7 @@ app.get("/test-proxy", async (req, res) => {
         res.json({
             working: true,
             proxyUsed: randomProxy,
-            ip: response.data.ip,
+            ip: response.data,
             data: response.data
         });
     } catch (err) {
@@ -60,6 +47,7 @@ app.get("/test-proxy", async (req, res) => {
 app.use("/api/wallets", walletRoutes);
 app.use("/api/faucetclaims", faucetClaimRoutes);
 app.use("/api/swapjobs", swapJobRoutes);
+app.use("api/bridges", bridgeRoutes);
 
 app.listen(PORT, () => {
     console.log(`You are logged in to ${PORT}`)
