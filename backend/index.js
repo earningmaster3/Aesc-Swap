@@ -4,6 +4,7 @@ import bodyParser from "body-parser";
 import walletRoutes from "./routes/walletRoute.js";
 import faucetClaimRoutes from "./routes/faucetClaimRoutes.js";
 import swapJobRoutes from "./routes/swapJobRoutes.js";
+import bridgeRoutes from "./routes/bridgeRoutes.js"
 
 import { HttpsProxyAgent } from "https-proxy-agent";
 import axios from "axios";
