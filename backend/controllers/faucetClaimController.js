@@ -1,68 +1,130 @@
 import prisma from "../prisma/client.js";
 import axios from "axios";
 import { ethers } from "ethers";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import path from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+
 
 const FAUCET_URL = process.env.FAUCET_URL || "https://testnet1faucet.aescnet.com/api/faucet/request";
 const DELAY_MS = parseInt(process.env.DELAY_MS || "10000");
+
+//Load proxies from proxy.txt
+
+const loadProxies = () => {
+    try {
+
+        const proxyPath = path.join(__dirname, "../../proxy.txt");
+        console.log(`📂 Looking for proxy.txt at: ${proxyPath}`);
+        console.log(`📂 __dirname is: ${__dirname}`);
+        const proxies = fs.readFileSync(proxyPath, "utf8").split("\n").map(p => p.trim()).filter(Boolean);
+        console.log(`✅ Loaded ${proxies.length} proxies`);
+        return proxies;
+
+    } catch (error) {
+        console.log("⚠️ Failed to load proxies");
+        console.error(error);
+        return [];
+    }
+}
+
+const PROXY_LIST = loadProxies();
+
+//Get random proxies
+const getRandomProxy = () => {
+    if (PROXY_LIST.length === 0) return null;
+    const proxy = PROXY_LIST[Math.floor(Math.random() * PROXY_LIST.length)]
+    console.log(` 🌐 Using proxy: ${proxy}`);
+    return proxy;
+}
+
 
 // ─── Helper: sleep between requests ──────────────────
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 //claim faucet for one address
 export const faucetClaim = async (walletId, address) => {
+    const maxProxyAttempts = 5; // Try up to 5 different proxies
+    let lastError = null;
 
-    try {
+    for (let attempt = 1; attempt <= maxProxyAttempts; attempt++) {
+        try {
+            console.log(`Claiming faucet for wallet ${walletId} (${address}) - Proxy Attempt ${attempt}/${maxProxyAttempts}`);
 
-        console.log(`Claiming faucet for wallet ${walletId} (${address})`);
-
-        const response = await axios.post(
-            FAUCET_URL,
-            { address },
-            {
+            const proxy = getRandomProxy();
+            const axiosConfig = {
                 headers: {
                     "Content-Type": "application/json",
                 },
                 timeout: 15000,
             }
-        )
 
-        const data = response.data;
-        const txHash = data.txHash;
+            if (proxy) {
+                axiosConfig.httpAgent = new HttpsProxyAgent(proxy);
+                axiosConfig.httpsAgent = new HttpsProxyAgent(proxy);
+            }
 
-        // save success to db
-        const claim = await prisma.faucetClaim.create({
-            data: {
-                walletId: parseInt(walletId),
-                address,
-                txHash,
-                status: "success",
-                amount: data.amount || '1.0',
-                claimedAt: new Date(),
-            },
-        });
+            const response = await axios.post(
+                FAUCET_URL,
+                { address },
+                axiosConfig
+            )
 
-        console.log(`✅ Claimed faucet for wallet ${walletId} (${address}) | Tx: ${txHash}`);
+            const data = response.data;
+            const txHash = data.txHash;
 
-        return ({ status: 'success', address, txHash, claimId: claim.id })
-
-    }
-    catch (error) {
-        console.log(error);
-        // Save failure to DB
-        try {
-            await prisma.faucetClaim.create({
+            // save success to db
+            const claim = await prisma.faucetClaim.create({
                 data: {
                     walletId: parseInt(walletId),
                     address,
-                    status: 'failed',
-                    error: error.message,
-                }
+                    txHash,
+                    status: "success",
+                    amount: data.amount || '1.0',
+                    claimedAt: new Date(),
+                },
             });
-        } catch (dbError) {
-            console.error("Failed to persist faucet claim error:", dbError);
+
+            console.log(`✅ Claimed faucet for wallet ${walletId} (${address}) | Tx: ${txHash}`);
+            return ({ status: 'success', address, txHash, claimId: claim.id })
+
+        } catch (error) {
+            lastError = error;
+            const isRateLimited = error.response?.status === 429;
+            const errorMsg = error.response?.data?.message || error.message;
+
+            console.error(`❌ Attempt ${attempt} failed for wallet ${walletId} (${address}) | Error: ${errorMsg}`);
+
+            if (isRateLimited && attempt < maxProxyAttempts) {
+                console.log("⚠️ Rate limited (429). Will try a different proxy immediately...");
+                continue; // Skip to next iteration of the loop (different proxy)
+            } else {
+                // Not a 429 error OR we've exhausted retry attempts, so we stop and log the failure
+                break;
+            }
         }
-        return { status: 'failed', address, error: error.message };
     }
+
+    // Save failure to DB
+    const finalErrorMsg = lastError?.response?.data?.message || lastError?.message || "Unknown error";
+    try {
+        await prisma.faucetClaim.create({
+            data: {
+                walletId: parseInt(walletId),
+                address,
+                status: 'failed',
+                error: finalErrorMsg,
+            }
+        });
+    } catch (dbError) {
+        console.error("Failed to persist faucet claim error:", dbError);
+    }
+    return { status: 'failed', address, error: finalErrorMsg };
 }
 
 //Generate 50 wallets and claim faucet for each
@@ -116,10 +178,6 @@ export const generateAndClaim = async (req, res) => {
             if (claimResult.status === 'success') {
                 results.claimSuccess++;
             } else {
-                if (claimResult.status === 'failed') {
-                    return res.status(502).json(claimResult);
-                }
-                res.json(claimResult);
                 results.claimFailed++;
             }
 
@@ -140,6 +198,7 @@ export const generateAndClaim = async (req, res) => {
             }
         }
 
+        res.json(results);
 
     } catch (error) {
         console.error("Faucet claim route error:", error);
