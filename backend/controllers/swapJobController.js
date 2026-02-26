@@ -1,14 +1,14 @@
 import prisma from "../prisma/client.js";
 import { ethers } from "ethers";
 
-const AESC_URL = process.env.AESC_URL || "https://testnetrpc1.aescnet.com";
-const AESC_CHAIN_ID = parseInt(process.env.AESC_CHAIN_ID || "71602");
-const DELAY_MS = parseInt(process.env.DELAY_MS || "10000");
-const MIN_SWAP = process.env.MIN_SWAP || "0.01";
-const MAX_SWAP = process.env.MAX_SWAP || "0.02";
+const AESC_URL = process.env.AESC_RPC_URL;
+const AESC_CHAIN_ID = parseInt(process.env.AESC_CHAIN_ID);
+const DELAY_MS = parseInt(process.env.DELAY_MS);
+const MIN_SWAP = process.env.MIN_SWAP;
+const MAX_SWAP = process.env.MAX_SWAP;
 
 //waex contract address
-const WAEX_ADDRESS = process.env.WAEX_ADDRESS || "0x05BE4146EAc85E380fB71ec6A4b97bA325cd53EE";
+const WAEX_ADDRESS = process.env.WAEX_ADDRESS;
 
 //WAEX contract abi
 const WAEX_ABI = [

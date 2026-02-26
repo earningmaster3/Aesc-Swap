@@ -6,16 +6,24 @@ import faucetClaimRoutes from "./routes/faucetClaimRoutes.js";
 import swapJobRoutes from "./routes/swapJobRoutes.js";
 import bridgeRoutes from "./routes/bridgeRoutes.js"
 import automationRoutes from "./routes/automationRoutes.js"
-
 import { HttpsProxyAgent } from "https-proxy-agent";
 import axios from "axios";
+import cron from "node-cron";
+import { executeAutomation } from "./controllers/automationController.js";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// ─── Cron Job: Run automation every 10 minutes ───────
+cron.schedule("*/10 * * * *", async () => {
+    console.log("\n⏰ Cron triggered: Running automation...");
+    const count = parseInt(process.env.CRON_WALLETS_COUNT || "100");
+    await executeAutomation(count);
+});
 
 app.get("/", (req, res) => {
     res.send({ message: "you are in wallet directory now" })
