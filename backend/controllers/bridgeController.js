@@ -1,115 +1,164 @@
 import prisma from "../prisma/client.js"
 import { ethers, parseUnits } from "ethers"
 
-//Bridging for a single address
+// ─── Chain Config ─────────────────────────────────────
+const AESC_RPC_URL = process.env.AESC_RPC_URL || "https://testnetrpc1.aescnet.com"; // ← ADD
+const AESC_CHAIN_ID = parseInt(process.env.AESC_CHAIN_ID || "71602");                 // ← ADD
+const DELAY_MS = parseInt(process.env.DELAY_MS || "10000");                      // ← ADD
 
-const AESC_RPC_URL = process.env.AESC_RPC_URL || "https://testnetrpc1.aescnet.com";
-const AESC_CHAIN_ID = process.env.AESC_CHAIN_ID || `71602`
-const DELAY_MS = process.env.DELAY_MS || `10000`
-const BRIDGE_AMOUNT = process.env.BRIDGE_AMOUNT || `0.01`
+// ─── Contract Addresses ───────────────────────────────
+const BRIDGE_ADDRESS = process.env.BRIDGE_ADDRESS || "0x241195a882Fa745f56b2f5B411eA2f2721045bA0";
+const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS || "0x2F3a429D90e4aD9A4984EA98Ed05D3f6D69dFf37";
+const DEST_CHAIN_ID = parseInt(process.env.DEST_CHAIN_ID || "56");
+const BRIDGE_AMOUNT = process.env.BRIDGE_AMOUNT || "0.01";
 
-//Destination contract address
-
-const BRIDGE_ADDRESS = process.env.BRIDGE_ADDRESS || "0x241195a882Fa745f56b2f5B411eA2f2721045bA0"
-const DEST_CHAIN_ID = parseInt(process.env.DEST_CHAIN_ID || "56")
-const DEST_ADDRESS = process.env.DEST_ADDRESS || "0x2F3a429D90e4aD9A4984EA98Ed05D3f6D69dFf37"
-
-// ─── Bridge ABI ───────────────────────────────────────
-// ⚠️  This is a generic bridge ABI — update after inspecting bridge.aescnet.com
-// Common bridge function signatures — one of these will match:
+// ─── ABIs ─────────────────────────────────────────────
 const BRIDGE_ABI = [
-    // Pattern 1 — most common
-    "function bridge(address token, uint256 amount, uint256 destChainId, address recipient) external payable",
-    // Pattern 2 — native token bridge
-    "function bridgeNative(uint256 destChainId, address recipient) external payable",
-    // Pattern 3 — LayerZero style
-    "function send(uint16 _dstChainId, bytes calldata _toAddress, uint256 _amount) external payable",
-    // Pattern 4 — simple transfer
-    "function transferCrossChain(address to, uint256 amount, uint256 chainId) external payable",
-    // Get bridge fee
-    "function estimateFee(uint256 destChainId, uint256 amount) external view returns (uint256)",
+    "function bridge(uint256 destChainId, address recipient, uint256 amount) external payable",
     "function getFee(uint256 destChainId) external view returns (uint256)",
+    "function estimateFee(uint256 destChainId, uint256 amount) external view returns (uint256)",
 ];
 
 const ERC20_ABI = [
     "function approve(address spender, uint256 amount) external returns (bool)",
     "function allowance(address owner, address spender) external view returns (uint256)",
     "function balanceOf(address account) external view returns (uint256)",
+    "function decimals() external view returns (uint8)",  // ← add this
 ];
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+// ─── Calculate bridge fee using estimateGas ───────────
+const getBridgeFee = async (provider, bridgeContract, destChainId, address, amount) => {
+    try {
+        // estimate gas units needed for bridge()
+        const gasUnits = await bridgeContract.bridge.estimateGas(
+            destChainId,
+            address,
+            amount,
+            { value: 0n }
+        );
+        console.log(`  ⛽ Gas units: ${gasUnits.toString()}`);
+
+        // get current gas price from AESC chain
+        const feeData = await provider.getFeeData();
+        const gasPrice = feeData.gasPrice;
+        console.log(`  ⛽ Gas price: ${ethers.formatUnits(gasPrice, "gwei")} gwei`);
+
+        // fee = gasUnits × gasPrice
+        const fee = gasUnits * gasPrice;
+        console.log(`  💰 Calculated fee: ${ethers.formatUnits(fee, 6)} AEX`);
+
+        return fee;
+
+    } catch (err) {
+        // fallback to fixed fee if estimation fails
+        console.log(`  ⚠️ Fee estimation failed: ${err.message}`);
+        console.log(`  💰 Using fixed fallback: 0.001 AEX`);
+        return ethers.parseUnits("0.001", 18);
+    }
+};
 
 export const bridgeJob = async (walletId, address, privateKey) => {
     try {
-        //core bridge function for a single wallet
-
-        console.log(`🌉 Bridging for wallet ${walletId} (${address})`)
-
-        //connect to aesc chain
+        console.log(`\n🌉 Bridging USDT for wallet ${walletId} (${address})`);
 
         const provider = new ethers.JsonRpcProvider(AESC_RPC_URL, {
-            chainId: parseInt(AESC_CHAIN_ID),
-            name: "aesc-testnet"
-        })
+            chainId: AESC_CHAIN_ID,
+            name: "aesc-testnet",
+        });
 
-        const signer = new ethers.Wallet(privateKey, provider)
-        const bridgeContract = new ethers.Contract(BRIDGE_ADDRESS, BRIDGE_ABI, signer)
-        const tokenContract = new ethers.Contract(DEST_ADDRESS, ERC20_ABI, signer)
+        const signer = new ethers.Wallet(privateKey, provider);
+        const bridgeContract = new ethers.Contract(BRIDGE_ADDRESS, BRIDGE_ABI, signer);
+        const tokenContract = new ethers.Contract(TOKEN_ADDRESS, ERC20_ABI, signer);
 
-        const amount = ethers.parseUnits(BRIDGE_AMOUNT, 18);
+        const amount = ethers.parseUnits(BRIDGE_AMOUNT.toString(), 18);
 
-        const balance = await tokenContract.balanceOf(address)
-        console.log(`💰 Balance: ${ethers.formatUnits(balance, 18)} WAEX`)
-
-        //step-1 check balance
+        // ── Step 1: Check USDT balance ───────────────
+        const balance = await tokenContract.balanceOf(address);
+        console.log(`  💰 USDT Balance: ${ethers.formatUnits(balance, 18)} USDT`);
 
         if (balance < amount) {
-            throw new Error(`Insufficient balance. Has: ${ethers.formatUnits(balance, 18)} | Needs: ${BRIDGE_AMOUNT}`);
+            throw new Error(
+                `Insufficient USDT. Has: ${ethers.formatUnits(balance, 18)} | Needs: ${BRIDGE_AMOUNT}`
+            );
         }
 
-        //step-2 approve bridge 
+        // ── Step 2: Approve USDT to bridge contract ──
         const allowance = await tokenContract.allowance(address, BRIDGE_ADDRESS);
         if (allowance < amount) {
-            console.log(`  🔓 Approving bridge for wallet ${walletId}...`);
+            console.log(`  🔓 Approving USDT for bridge...`);
             const approveTx = await tokenContract.approve(BRIDGE_ADDRESS, ethers.MaxUint256);
             await approveTx.wait();
             console.log(`  ✅ Approved | TX: ${approveTx.hash}`);
+        } else {
+            console.log(`  ✅ Already approved`);
         }
 
-        //get bridge fee
-        const fee = await bridgeContract.getFee(DEST_CHAIN_ID);
-        console.log(`  📊 Fee: ${ethers.formatUnits(fee, 18)} WAEX`)
+        // ── Step 3: Bridge USDT → BSC ────────────────
+        // ── Step 3: Calculate fee ────────────────────
+        const fee = await getBridgeFee(
+            provider,
+            bridgeContract,
+            DEST_CHAIN_ID,
+            address,
+            amount
+        );
+        console.log(`  🌉 Bridging ${BRIDGE_AMOUNT} USDT → BSC (chain ${DEST_CHAIN_ID})...`);
 
-        //step-3 bridge
-        const bridgeTx = await bridgeContract.bridge(DEST_ADDRESS, amount, DEST_CHAIN_ID, address, { value: fee });
+
+        const bridgeTx = await bridgeContract.bridge(
+            DEST_CHAIN_ID,  // 56 = BSC
+            address,        // recipient = same wallet on BSC
+            amount,
+            { value: fee }
+        );
+
+        console.log(`  ⏳ Waiting for confirmation... TX: ${bridgeTx.hash}`);
         await bridgeTx.wait();
-        console.log(`  ✅ Bridged | TX: ${bridgeTx.hash}`)
+        console.log(`  ✅ Bridge success! TX: ${bridgeTx.hash}`);
 
-        //save success to db
+        // ── Step 4: Save to DB ───────────────────────
         const job = await prisma.bridgeJob.create({
             data: {
                 walletId: parseInt(walletId),
-                address: address,
-                tokenIn: 'WAEX',
-                tokenOut: DEST_ADDRESS,
-                amountIn: BRIDGE_AMOUNT,
-                amountOut: ethers.formatUnits(amount, 18),
-                status: 'success',
+                walletAddress: address,
+                fromChainId: AESC_CHAIN_ID,
+                toChainId: DEST_CHAIN_ID,
+                tokenAddress: TOKEN_ADDRESS,
+                amount: BRIDGE_AMOUNT.toString(),
+                status: "success",
                 txHash: bridgeTx.hash,
-                attempt: 1,
+                attempts: 1,
                 bridgedAt: new Date(),
             },
         });
 
-        console.log(`  ✅ Bridged | TX: ${bridgeTx.hash}`)
         return { status: "success", address, txHash: bridgeTx.hash, jobId: job.id };
+
     } catch (error) {
-        console.log(error)
-        const errorMsg = error.message;
-        console.error(`❌ Bridge failed for wallet ${walletId} (${address}): ${errorMsg}`);
-        throw error;
+        const errorMsg = error.reason || error.message;
+        console.error(`❌ Bridge failed for ${address}: ${errorMsg}`);
+
+        try {
+            await prisma.bridgeJob.create({
+                data: {
+                    walletId: parseInt(walletId),
+                    walletAddress: address,
+                    fromChainId: AESC_CHAIN_ID,
+                    toChainId: DEST_CHAIN_ID,
+                    tokenAddress: TOKEN_ADDRESS,
+                    amount: BRIDGE_AMOUNT.toString(),
+                    status: "failed",
+                    error: errorMsg,
+                    attempts: 1,
+                },
+            });
+        } catch (dbError) {
+            console.error("Failed to save to DB:", dbError);
+        }
+
+        return { status: "failed", address, error: errorMsg };
     }
-}
+};
 
 export const runBridgeSingle = async (req, res) => {
     try {
