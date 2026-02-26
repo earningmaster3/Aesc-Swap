@@ -1,8 +1,9 @@
 import express from "express";
-import { runBridgeSingle } from "../controllers/bridgeController.js";
+import { runBridgeSingle, runBridgeForAll } from "../controllers/bridgeController.js";
 
 const router = express.Router();
 
-router.post("/", runBridgeSingle);
+router.post("/bridge-single", runBridgeSingle);
+router.post("/bridge-all", runBridgeForAll);
 
 export default router;
