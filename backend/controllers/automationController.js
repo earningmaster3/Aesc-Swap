@@ -48,20 +48,16 @@ const sendUSDT = async (toAddress) => {
 };
 
 // ─────────────────────────────────────────────────────
-// POST /api/automation/run
-// Per wallet: faucet → swap → send USDT → bridge
+// Core automation logic
 // ─────────────────────────────────────────────────────
-export const fullAutomation = async (req, res) => {
+export const executeAutomation = async (count) => {
     try {
-        const count = parseInt(req.body.count);
-        if (!count) return res.status(400).json({ message: "Count is required" });
-
         if (!SENDER_PRIVATE_KEY) {
-            return res.status(400).json({ error: "SENDER_PRIVATE_KEY not set in .env" });
+            throw new Error("SENDER_PRIVATE_KEY not set in .env");
         }
 
         console.log(`\n${'═'.repeat(50)}`);
-        console.log(`🤖 Full Automation for ${count} wallets`);
+        console.log(`🤖 Full Automation for ${count} wallets (via Cron/API)`);
         console.log(`${'═'.repeat(50)}\n`);
 
         const results = {
@@ -151,7 +147,7 @@ export const fullAutomation = async (req, res) => {
                 continue; // ← skip usdt send and bridge
             }
 
-            // ── Step 4: Send 0.01 USDT to wallet ──────
+            // ── Step 4: Send USDT to wallet ────────────
             console.log(`\n  📍 STEP 4: Sending ${USDT_AMOUNT} USDT...`);
             const usdtResult = await sendUSDT(wallet.address);
 
@@ -205,8 +201,8 @@ export const fullAutomation = async (req, res) => {
         console.log(`   Bridge   : ✅ ${results.bridgeSuccess} | ❌ ${results.bridgeFailed}`);
         console.log(`${'═'.repeat(50)}\n`);
 
-        res.json({
-            message: "Full automation complete ✅",
+        return {
+            success: true,
             summary: {
                 total: results.total,
                 faucetSuccess: results.faucetSuccess,
@@ -219,7 +215,33 @@ export const fullAutomation = async (req, res) => {
                 bridgeFailed: results.bridgeFailed,
             },
             wallets: results.wallets,
-        });
+        };
+
+    } catch (error) {
+        console.error("Automation execution error:", error.message);
+        return { success: false, error: error.message };
+    }
+};
+
+// ─────────────────────────────────────────────────────
+// POST /api/automation/run
+// ─────────────────────────────────────────────────────
+export const fullAutomation = async (req, res) => {
+    try {
+        const count = parseInt(req.body.count);
+        if (!count) return res.status(400).json({ message: "Count is required" });
+
+        const result = await executeAutomation(count);
+
+        if (result.success) {
+            res.json({
+                message: "Full automation complete ✅",
+                summary: result.summary,
+                wallets: result.wallets,
+            });
+        } else {
+            res.status(500).json({ error: result.error });
+        }
 
     } catch (error) {
         console.error(error);
