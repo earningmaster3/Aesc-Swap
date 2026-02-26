@@ -4,8 +4,8 @@ import { ethers } from "ethers";
 import { HttpsProxyAgent } from "https-proxy-agent";
 
 
-const FAUCET_URL = process.env.FAUCET_URL || "https://testnet1faucet.aescnet.com/api/faucet/request";
-const DELAY_MS = parseInt(process.env.DELAY_MS || "10000");
+const FAUCET_URL = process.env.FAUCET_URL;
+const DELAY_MS = parseInt(process.env.DELAY_MS);
 
 
 // ─── Helper: sleep between requests ──────────────────
@@ -16,7 +16,7 @@ export const faucetClaim = async (walletId, address) => {
     const maxProxyAttempts = 5; // Try up to 5 different proxies
     let lastError = null;
 
-    const proxy = "http://7253ea78ce8d8ebc90c5__cr.in:7fd6ee2ed6cd8a06@gw.dataimpulse.com:823";
+    const proxy = process.env.PROXY_URL;
 
     for (let attempt = 1; attempt <= maxProxyAttempts; attempt++) {
         try {

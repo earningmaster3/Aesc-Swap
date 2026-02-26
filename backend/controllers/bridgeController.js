@@ -2,15 +2,16 @@ import prisma from "../prisma/client.js";
 import { ethers } from "ethers"; // ← removed parseUnits, not needed
 
 // ─── Chain Config ─────────────────────────────────────
-const AESC_RPC_URL = process.env.AESC_RPC_URL || "https://testnetrpc1.aescnet.com";
-const AESC_CHAIN_ID = parseInt(process.env.AESC_CHAIN_ID || "71602");
-const DELAY_MS = parseInt(process.env.DELAY_MS || "10000");
+const AESC_RPC_URL = process.env.AESC_RPC_URL;
+const AESC_CHAIN_ID = parseInt(process.env.AESC_CHAIN_ID);
+const DELAY_MS = parseInt(process.env.DELAY_MS);
 
 // ─── Contract Addresses ───────────────────────────────
-const BRIDGE_ADDRESS = process.env.BRIDGE_ADDRESS || "0x241195a882Fa745f56b2f5B411eA2f2721045bA0";
-const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS || "0x2F3a429D90e4aD9A4984EA98Ed05D3f6D69dFf37";
-const DEST_CHAIN_ID = parseInt(process.env.DEST_CHAIN_ID || "56");
-const BRIDGE_AMOUNT = process.env.BRIDGE_AMOUNT || "0.01"; // ← minimum 0.01 USDT
+const BRIDGE_ADDRESS = process.env.BRIDGE_ADDRESS;
+const TOKEN_ADDRESS = process.env.TOKEN_ADDRESS;
+const DEST_CHAIN_ID = parseInt(process.env.DEST_CHAIN_ID);
+const MIN_BRIDGE = process.env.MIN_BRIDGE;
+const MAX_BRIDGE = process.env.MAX_BRIDGE;
 
 // ─── Only ERC20 ABI needed ────────────────────────────
 // no bridge ABI needed — just approve + transfer
@@ -28,6 +29,7 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // Core bridge function — approve + transfer to bridge
 // ─────────────────────────────────────────────────────
 export const bridgeJob = async (walletId, address, privateKey) => {
+    const randomAmount = (Math.random() * (parseFloat(MAX_BRIDGE) - parseFloat(MIN_BRIDGE)) + parseFloat(MIN_BRIDGE)).toFixed(4);
     try {
         console.log(`\n🌉 Bridging USDT for wallet ${walletId} (${address})`);
 
@@ -49,8 +51,8 @@ export const bridgeJob = async (walletId, address, privateKey) => {
         const decimals = await tokenContract.decimals();
         console.log(`  🔢 Token decimals: ${decimals}`);
 
-        const amount = ethers.parseUnits(BRIDGE_AMOUNT.toString(), decimals);
-        console.log(`  💵 Amount: ${BRIDGE_AMOUNT} USDT`);
+        const amount = ethers.parseUnits(randomAmount.toString(), decimals);
+        console.log(`  💵 Amount: ${randomAmount} USDT`);
 
         // ── Step 1: Check USDT balance ────────────────
         const balance = await tokenContract.balanceOf(address);
@@ -58,7 +60,7 @@ export const bridgeJob = async (walletId, address, privateKey) => {
 
         if (balance < amount) {
             throw new Error(
-                `Insufficient USDT. Has: ${ethers.formatUnits(balance, decimals)} | Needs: ${BRIDGE_AMOUNT}`
+                `Insufficient USDT. Has: ${ethers.formatUnits(balance, decimals)} | Needs: ${randomAmount}`
             );
         }
 
@@ -77,7 +79,7 @@ export const bridgeJob = async (walletId, address, privateKey) => {
         }
 
         // ── Step 3: Transfer USDT to bridge contract ──
-        console.log(`  📤 Transferring ${BRIDGE_AMOUNT} USDT to bridge contract...`);
+        console.log(`  📤 Transferring ${randomAmount} USDT to bridge contract...`);
         const transferTx = await tokenContract.transfer(
             BRIDGE_ADDRESS, // ← send to bridge contract address
             amount
@@ -95,7 +97,7 @@ export const bridgeJob = async (walletId, address, privateKey) => {
                 fromChainId: AESC_CHAIN_ID,
                 toChainId: DEST_CHAIN_ID,
                 tokenAddress: TOKEN_ADDRESS,
-                amount: BRIDGE_AMOUNT.toString(),
+                amount: randomAmount.toString(),
                 status: "success",
                 txHash: transferTx.hash, // ✅ fixed — was bridgeTx.hash
                 attempts: 1,
@@ -118,7 +120,7 @@ export const bridgeJob = async (walletId, address, privateKey) => {
                     fromChainId: AESC_CHAIN_ID,
                     toChainId: DEST_CHAIN_ID,
                     tokenAddress: TOKEN_ADDRESS,
-                    amount: BRIDGE_AMOUNT.toString(),
+                    amount: randomAmount.toString(),
                     status: "failed",
                     error: errorMsg,
                     attempts: 1,
