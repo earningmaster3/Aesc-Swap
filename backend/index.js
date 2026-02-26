@@ -5,6 +5,7 @@ import walletRoutes from "./routes/walletRoute.js";
 import faucetClaimRoutes from "./routes/faucetClaimRoutes.js";
 import swapJobRoutes from "./routes/swapJobRoutes.js";
 import bridgeRoutes from "./routes/bridgeRoutes.js"
+import automationRoutes from "./routes/automationRoutes.js"
 
 import { HttpsProxyAgent } from "https-proxy-agent";
 import axios from "axios";
@@ -49,6 +50,7 @@ app.use("/api/wallets", walletRoutes);
 app.use("/api/faucetclaims", faucetClaimRoutes);
 app.use("/api/swapjobs", swapJobRoutes);
 app.use("/api/bridges", bridgeRoutes);
+app.use("/api/automation", automationRoutes)
 
 app.listen(PORT, () => {
     console.log(`You are logged in to ${PORT}`)
